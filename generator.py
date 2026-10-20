@@ -80,6 +80,9 @@ def save_exceptions(mapping):
     return clean
 
 
+# 予約商品の判定（FSの商品名・キャッチコピーにこの語を含む品番を除外）
+RESERVATION_PATTERN = r'予約'
+
 # 全項目共通の禁止ワードリスト（景表法・ロコンドルール対応）
 FORBIDDEN_WORDS = [
     r'[0-9０-９]+(?:%|％)(?:OFF|off|オフ)',
@@ -295,6 +298,7 @@ class GeneratorResult:
     category_missing: list = field(default_factory=list)   # カテゴリ未判定（ロコンド既定カテゴリになる）品番
     size_invalid: list = field(default_factory=list)       # ロコンドサイズに変換できなかった「品番:サイズ」
     jan_missing: list = field(default_factory=list)        # JANコードが空のため除外したSKU（商品管理番号）
+    reservation_excluded: list = field(default_factory=list)  # 予約商品のため除外した品番
 
 
 # --- 共通ユーティリティ ---
@@ -827,7 +831,8 @@ def _uniq(series):
 
 def generate_locondo_csv(fs_var_file, ne_file, fs_goods_file, season_override: Optional[str] = None,
                          locondo_ref_file=None, infer_category: bool = False,
-                         extra_exceptions: Optional[dict] = None) -> GeneratorResult:
+                         extra_exceptions: Optional[dict] = None,
+                         exclude_reservation: bool = True) -> GeneratorResult:
     """locondo_ref_file: ロコンド出品中データ（commodity_*.csv）。品番→ブランドの確定に使用
     infer_category: True で商品名からカテゴリーを推定。False（既定）は空欄＝ロコンド側で設定"""
     reference = load_locondo_reference(locondo_ref_file)
@@ -855,9 +860,19 @@ def generate_locondo_csv(fs_var_file, ne_file, fs_goods_file, season_override: O
         left_on='商品管理番号', right_on='商品コード', how='left'
     )
     fs_goods = fs_goods.drop_duplicates(subset=['商品URLコード'], keep='first')
-    for col in ('下部コメント', 'メイングループ'):
+    for col in ('下部コメント', 'メイングループ', 'キャッチコピー'):
         if col not in fs_goods.columns:
             fs_goods[col] = ''
+
+    # 予約商品（FSの商品名かキャッチコピーに「予約」を含む品番）を品番ごと除外
+    reservation_excluded = []
+    if exclude_reservation:
+        is_resv = (fs_goods['商品名'].apply(_s).str.contains(RESERVATION_PATTERN) |
+                   fs_goods['キャッチコピー'].apply(_s).str.contains(RESERVATION_PATTERN))
+        resv_codes = set(fs_goods.loc[is_resv, '商品URLコード'].apply(_code_str))
+        reservation_excluded = sorted({locondo_hinban(c) for c in resv_codes})
+        merged = merged[~merged['商品URLコード'].apply(_code_str).isin(resv_codes)].copy()
+        fs_goods = fs_goods[~is_resv].copy()
     merged = merged.merge(
         fs_goods[['商品URLコード', '商品名', '商品説明文', '定価', '下部コメント', 'メイングループ']],
         on='商品URLコード', how='left', suffixes=('', '_goods')
@@ -950,4 +965,5 @@ def generate_locondo_csv(fs_var_file, ne_file, fs_goods_file, season_override: O
         category_missing=_uniq(out.loc[out['カテゴリーコード1'] == '', '品番']),
         size_invalid=_uniq(out.loc[~size_ok, '品番'] + ':' + raw_size[~size_ok]),
         jan_missing=list(dict.fromkeys(jan_excluded)),
+        reservation_excluded=reservation_excluded,
     )

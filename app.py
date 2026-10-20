@@ -79,6 +79,9 @@ with st.expander("4. ロコンド出品中データ（任意）"):
 st.header("STEP 2｜オプション")
 opts, default_idx = season_options(date.today())
 season = st.selectbox("シーズン（ロコンドの必須項目）", opts, index=default_idx)
+exclude_reservation = st.checkbox(
+    "予約商品を除外する（FSの商品名・キャッチコピーに「予約」を含む品番）", value=True
+)
 infer_category = st.checkbox(
     "カテゴリーを商品名から推定する（オフのときは空欄で出力し、ロコンド側でカテゴリーが設定されます）", value=False
 )
@@ -125,6 +128,7 @@ if st.button("CSV生成", type="primary", disabled=bool(missing)):
                 locondo_ref_file=ref_files or None,
                 infer_category=infer_category,
                 extra_exceptions=current_exceptions,
+                exclude_reservation=exclude_reservation,
             )
             st.session_state["generated_at"] = datetime.now()
             st.session_state.pop("error", None)
@@ -154,6 +158,7 @@ if result is not None:
     add("製品種別を判定できず", result.type_uncertain, "「シューズ」として出力しています。バッグの場合は例外として連絡してください")
     add("サイズを変換できず", result.size_invalid, "ロコンドサイズが空欄です。FSのサイズ表記を確認してください")
     add("JANコードが空のため除外", result.jan_missing, "NE/FSでJANを登録すると次回から出力されます")
+    add("予約商品のため除外", result.reservation_excluded, "入荷して予約販売が終わったら（FSの商品名・キャッチコピーから「予約」を外したら）出力されます")
     if result.skip_count:
         issues.append({"内容": "NEに商品コードがなくスキップ", "対象": f"{result.skip_count}SKU",
                        "対処": "NE商品マスターが最新か確認してください"})
