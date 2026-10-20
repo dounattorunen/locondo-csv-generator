@@ -1,0 +1,3 @@
+[server]
+# static フォルダ内のファイル（マニュアルPDF）をブラウザで開けるようにする
+enableStaticServing = true

@@ -1,0 +1,12 @@
+# 業務データ（公開リポジトリに含めない）
+*.csv
+*.zip
+*.xlsx
+*.pptx
+~$*
+brand_exceptions.json
+
+# バックアップ・キャッシュ
+*_backup_*.py
+__pycache__/
+.DS_Store
